@@ -1,0 +1,18 @@
+# Development Dockerfile for processor-stripe
+# Supports hot reload via tsx watch
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source (will be overridden by volume mount)
+COPY . .
+
+# Run with hot reload
+CMD ["npm", "run", "dev"]
