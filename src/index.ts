@@ -1,13 +1,11 @@
 import Stripe from 'stripe';
-import { registerProcessor, type PaymentProcessor, type PaymentInput, type PaymentResult, type PaymentConfig, type RefundResult } from '@payloops/processor-core';
+import type { PaymentProcessor, PaymentInput, PaymentResult, PaymentConfig, RefundResult } from '@payloops/processor-core';
 
 class StripeProcessor implements PaymentProcessor {
   name = 'stripe';
 
   private getClient(config: PaymentConfig): Stripe {
-    return new Stripe(config.credentials.secretKey, {
-      apiVersion: '2024-12-18.acacia'
-    });
+    return new Stripe(config.credentials.secretKey);
   }
 
   async createPayment(input: PaymentInput, config: PaymentConfig): Promise<PaymentResult> {
@@ -188,15 +186,4 @@ class StripeProcessor implements PaymentProcessor {
   }
 }
 
-// Create and register the processor
-const stripeProcessor = new StripeProcessor();
-
-export function register() {
-  registerProcessor(stripeProcessor);
-}
-
-// Auto-register when imported
-register();
-
 export { StripeProcessor };
-export default stripeProcessor;
