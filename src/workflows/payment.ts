@@ -1,14 +1,28 @@
-import { proxyActivities, sleep, defineSignal, setHandler, condition } from '@temporalio/workflow';
-import type * as activities from '../activities';
+import { proxyActivities, defineSignal, setHandler, condition } from '@temporalio/workflow';
+import type * as stripeActivities from '../activities';
+import type * as backendActivities from '../activities/backend-types';
 import type { PaymentResult } from '@payloops/processor-core';
 
-const { processPayment, updateOrderStatus } = proxyActivities<typeof activities>({
+// Proxy to local Stripe activities (runs on stripe-payments queue)
+const stripe = proxyActivities<typeof stripeActivities>({
   startToCloseTimeout: '2 minutes',
   retry: {
     initialInterval: '1s',
     maximumInterval: '1m',
     backoffCoefficient: 2,
     maximumAttempts: 5
+  }
+});
+
+// Proxy to backend DB activities (runs on backend-operations queue)
+const backend = proxyActivities<typeof backendActivities>({
+  taskQueue: 'backend-operations',
+  startToCloseTimeout: '30 seconds',
+  retry: {
+    initialInterval: '1s',
+    maximumInterval: '30s',
+    backoffCoefficient: 2,
+    maximumAttempts: 3
   }
 });
 
@@ -48,53 +62,77 @@ export async function PaymentWorkflow(input: PaymentWorkflowInput): Promise<Paym
   });
 
   try {
-    // Step 1: Process payment via Stripe
-    const result = await processPayment({
+    // Step 1: Get processor config from backend
+    const config = await backend.getProcessorConfig({ merchantId: input.merchantId, processor: 'stripe' });
+
+    if (!config) {
+      await backend.updateOrderStatus({
+        orderId: input.orderId,
+        status: 'failed'
+      });
+      return {
+        success: false,
+        status: 'failed',
+        errorCode: 'no_processor_config',
+        errorMessage: 'Stripe processor not configured for merchant'
+      };
+    }
+
+    // Step 2: Process payment via Stripe (local activity)
+    const result = await stripe.processPayment({
       orderId: input.orderId,
       merchantId: input.merchantId,
       amount: input.amount,
       currency: input.currency,
-      processor: 'stripe',
       returnUrl: input.returnUrl
-    });
+    }, config);
 
     // If payment requires redirect (3DS, etc.)
     if (result.status === 'requires_action') {
-      await updateOrderStatus(input.orderId, 'requires_action', result.processorOrderId);
+      await backend.updateOrderStatus({
+        orderId: input.orderId,
+        status: 'requires_action',
+        processorOrderId: result.processorOrderId
+      });
 
       // Wait for completion signal with timeout using condition()
       const timeout = 15 * 60 * 1000; // 15 minutes
       const completed = await condition(() => paymentCompleted || cancelled, timeout);
 
       if (cancelled) {
-        await updateOrderStatus(input.orderId, 'cancelled');
+        await backend.updateOrderStatus({ orderId: input.orderId, status: 'cancelled' });
         return { success: false, status: 'failed', errorCode: 'cancelled', errorMessage: 'Payment cancelled' };
       }
 
       if (!completed || !paymentCompleted) {
-        await updateOrderStatus(input.orderId, 'failed');
+        await backend.updateOrderStatus({ orderId: input.orderId, status: 'failed' });
         return { success: false, status: 'failed', errorCode: 'timeout', errorMessage: 'Payment timeout' };
       }
 
       if (paymentResult !== null) {
         const finalResult = paymentResult as PaymentResult;
-        await updateOrderStatus(
-          input.orderId,
-          finalResult.status,
-          result.processorOrderId,
-          finalResult.processorTransactionId
-        );
+        await backend.updateOrderStatus({
+          orderId: input.orderId,
+          status: finalResult.status,
+          processorOrderId: result.processorOrderId,
+          processorTransactionId: finalResult.processorTransactionId
+        });
         return finalResult;
       }
     }
 
-    // Update order with result
-    await updateOrderStatus(input.orderId, result.status, result.processorOrderId, result.processorTransactionId);
+    // Update order with result via backend
+    await backend.updateOrderStatus({
+      orderId: input.orderId,
+      status: result.status,
+      processorOrderId: result.processorOrderId,
+      processorTransactionId: result.processorTransactionId
+    });
 
     return result;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await updateOrderStatus(input.orderId, 'failed');
+    await backend.updateOrderStatus({ orderId: input.orderId, status: 'failed' });
 
     return {
       success: false,
