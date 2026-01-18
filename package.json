@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.0",
-    "@payloops/processor-core": "^0.0.9",
+    "@payloops/processor-core": "^0.0.10",
     "@temporalio/activity": "^1.11.7",
     "@temporalio/worker": "^1.11.7",
     "@temporalio/workflow": "^1.11.7",
