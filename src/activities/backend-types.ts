@@ -33,12 +33,13 @@ export interface WebhookDeliveryResult {
 
 // Activity function signatures (for proxyActivities typing)
 // Note: tfn.fn() wraps inputs in an object, so signatures use object input
-export function getProcessorConfig(input: { merchantId: string; processor: string }): Promise<PaymentConfig | null>;
-export function updateOrderStatus(input: UpdateOrderStatusInput): Promise<void>;
-export function getOrder(input: { orderId: string }): Promise<unknown>;
-export function getMerchantWebhookUrl(input: { merchantId: string }): Promise<{ url: string | null; secret: string | null }>;
-export function deliverWebhook(input: WebhookDeliveryInput): Promise<WebhookDeliveryResult>;
-export function createWebhookEvent(input: {
+// Using declare to make these ambient declarations without implementations
+export declare function getProcessorConfig(input: { merchantId: string; processor: string }): Promise<PaymentConfig | null>;
+export declare function updateOrderStatus(input: UpdateOrderStatusInput): Promise<void>;
+export declare function getOrder(input: { orderId: string }): Promise<unknown>;
+export declare function getMerchantWebhookUrl(input: { merchantId: string }): Promise<{ url: string | null; secret: string | null }>;
+export declare function deliverWebhook(input: WebhookDeliveryInput): Promise<WebhookDeliveryResult>;
+export declare function createWebhookEvent(input: {
   merchantId: string;
   orderId: string;
   eventType: string;
