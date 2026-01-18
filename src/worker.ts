@@ -1,22 +1,24 @@
 // Initialize OpenTelemetry FIRST, before any other imports
-import { initTelemetry, logger, createWorkerInterceptors } from '@payloops/processor-core/observability';
+import { initTelemetry, logger } from '@payloops/processor-core/observability';
 initTelemetry(process.env.OTEL_SERVICE_NAME || 'loop-processor-stripe', '0.0.1');
 
-import { Worker, NativeConnection } from '@temporalio/worker';
+import { createWorker } from '@astami/temporal-functions/worker';
+import { createWorkerInterceptors } from '@astami/temporal-functions/observability';
 import * as activities from './activities';
 
 async function run() {
-  const connection = await NativeConnection.connect({
-    address: process.env.TEMPORAL_ADDRESS || 'localhost:7233'
-  });
-
-  const worker = await Worker.create({
-    connection,
-    namespace: process.env.TEMPORAL_NAMESPACE || 'loop',
+  const worker = createWorker({
+    temporal: {
+      address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
+      namespace: process.env.TEMPORAL_NAMESPACE || 'loop',
+    },
     taskQueue: 'stripe-payments',
     workflowsPath: new URL('../dist/workflows/index.js', import.meta.url).pathname,
     activities,
-    interceptors: createWorkerInterceptors({ serviceName: 'stripe' })
+    interceptors: createWorkerInterceptors({
+      serviceName: 'stripe',
+      logger,
+    }),
   });
 
   logger.info(
@@ -28,7 +30,7 @@ async function run() {
     'Starting Stripe payment worker'
   );
 
-  await worker.run();
+  await worker.start();
 }
 
 run().catch((err) => {
