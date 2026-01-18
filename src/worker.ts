@@ -17,7 +17,7 @@ async function run() {
     connection,
     namespace: process.env.TEMPORAL_NAMESPACE || 'loop',
     taskQueue: 'stripe-payments',
-    workflowsPath: new URL('./workflows/index.js', import.meta.url).pathname,
+    workflowsPath: new URL('../dist/workflows/index.js', import.meta.url).pathname,
     activities,
     interceptors: {
       activityInbound: [
